@@ -1,0 +1,16 @@
+[project]
+name = "ai-ticket-triage"
+version = "1.0.0"
+description = "Webhook service that classifies Zendesk tickets with Claude and routes urgent ones to Slack"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B"]
