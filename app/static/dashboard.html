@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ticket Triage</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #14171f; --muted: #667085; --line: #e6e8ec;
+    --accent: #5b5bd6; --accent-ink: #fff;
+    --urgent: #d92d20; --urgent-bg: #fef3f2; --high: #dc6803; --high-bg: #fffaeb;
+    --normal: #1570ef; --normal-bg: #eff8ff; --low: #667085; --low-bg: #f2f4f7;
+    --ok: #079455;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1015; --panel: #161920; --text: #e9ebf0; --muted: #8b93a3; --line: #262a33;
+      --accent: #7c7cf0; --urgent: #f97066; --urgent-bg: #3a1714; --high: #fdb022; --high-bg: #3a2a0c;
+      --normal: #53b1fd; --normal-bg: #0c2440; --low: #98a2b3; --low-bg: #222630; --ok: #47cd89;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 32px 16px 64px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin-top: 2px; }
+  .pills { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+  .pill { font-size: 12px; padding: 2px 8px; border-radius: 999px; border: 1px solid var(--line);
+          color: var(--muted); background: var(--panel); }
+  .pill.on::before { content: "●"; color: var(--ok); margin-right: 5px; }
+  .pill.off::before { content: "○"; margin-right: 5px; }
+  button { font: inherit; font-weight: 600; border: 0; border-radius: 8px; padding: 9px 14px; cursor: pointer;
+           background: var(--accent); color: var(--accent-ink); }
+  button:disabled { opacity: .6; cursor: progress; }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin: 24px 0; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; }
+  .stat .label { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .04em; }
+  .stat .value { font-size: 28px; font-weight: 700; margin-top: 4px; font-variant-numeric: tabular-nums; }
+  .bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-top: 10px; background: var(--low-bg); }
+  .bar span { display: block; }
+  .list { display: flex; flex-direction: column; gap: 10px; }
+  .ticket { display: grid; grid-template-columns: 92px 1fr auto; gap: 14px; align-items: start; }
+  .badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .04em;
+           padding: 3px 8px; border-radius: 6px; text-align: center; }
+  .u-urgent { color: var(--urgent); background: var(--urgent-bg); }
+  .u-high { color: var(--high); background: var(--high-bg); }
+  .u-normal { color: var(--normal); background: var(--normal-bg); }
+  .u-low { color: var(--low); background: var(--low-bg); }
+  .title { font-weight: 600; }
+  .title .id { color: var(--muted); font-weight: 500; margin-right: 6px; }
+  .summary { margin-top: 2px; }
+  .why { color: var(--muted); font-size: 13px; margin-top: 4px; }
+  .meta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .chip { font-size: 12px; padding: 1px 8px; border-radius: 999px; background: var(--low-bg); color: var(--muted); }
+  .actions { text-align: right; font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .actions div { margin-bottom: 2px; }
+  .yes { color: var(--ok); font-weight: 600; }
+  .err { color: var(--urgent); font-size: 12px; margin-top: 6px; }
+  .empty { text-align: center; color: var(--muted); padding: 48px 16px; }
+  h2 { font-size: 15px; margin: 0 0 12px; }
+  @media (max-width: 720px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .ticket { grid-template-columns: 1fr; gap: 8px; }
+    .actions { text-align: left; display: flex; gap: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1>AI Ticket Triage</h1>
+      <div class="sub">Zendesk tickets classified by Claude · urgent ones routed to Slack</div>
+      <div class="pills" id="integrations"></div>
+    </div>
+    <button id="demo">Triage a sample ticket</button>
+  </header>
+
+  <section class="stats">
+    <div class="card stat"><div class="label">Tickets triaged</div><div class="value" id="s-total">0</div></div>
+    <div class="card stat"><div class="label">Urgent + high</div><div class="value" id="s-hot">0</div>
+      <div class="bar" id="s-bar"></div></div>
+    <div class="card stat"><div class="label">Sent to Slack</div><div class="value" id="s-alerted">0</div></div>
+    <div class="card stat"><div class="label">Avg. triage time</div><div class="value" id="s-latency">–</div></div>
+  </section>
+
+  <h2>Recent tickets</h2>
+  <div class="list" id="list"><div class="card empty">No tickets yet. Send a Zendesk webhook or click “Triage a sample ticket”.</div></div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const COLORS = { urgent: "var(--urgent)", high: "var(--high)", normal: "var(--normal)", low: "var(--low)" };
+
+function timeAgo(iso) {
+  const s = Math.max(0, (Date.now() - new Date(iso)) / 1000);
+  if (s < 60) return "just now";
+  if (s < 3600) return Math.floor(s / 60) + "m ago";
+  if (s < 86400) return Math.floor(s / 3600) + "h ago";
+  return new Date(iso).toLocaleDateString();
+}
+
+function renderTicket(r) {
+  const c = r.classification, t = r.ticket;
+  return `<div class="card ticket">
+    <div><span class="badge u-${c.urgency}">${c.urgency}</span></div>
+    <div>
+      <div class="title"><span class="id">#${t.ticket_id}</span>${esc(t.subject)}</div>
+      ${c.summary !== t.subject ? `<div class="summary">${esc(c.summary)}</div>` : ""}
+      <div class="why">${esc(c.reasoning)}</div>
+      <div class="meta">
+        <span class="chip">${esc(c.category.replace("_", " "))}</span>
+        <span class="chip">${esc(c.sentiment)}</span>
+        <span class="chip">${Math.round(c.confidence * 100)}% · ${esc(c.source)}</span>
+        ${t.requester_name ? `<span class="chip">${esc(t.requester_name)}</span>` : ""}
+      </div>
+      ${r.errors.length ? `<div class="err">${r.errors.map(esc).join("<br>")}</div>` : ""}
+    </div>
+    <div class="actions">
+      <div>${timeAgo(r.triaged_at)} · ${r.latency_ms} ms</div>
+      <div>Slack: ${r.slack_alerted ? '<span class="yes">alerted</span>' : "—"}</div>
+      <div>Zendesk: ${r.zendesk_updated ? '<span class="yes">updated</span>' : "—"}</div>
+    </div>
+  </div>`;
+}
+
+async function refresh() {
+  const res = await fetch("/api/tickets");
+  const { stats, tickets } = await res.json();
+  $("s-total").textContent = stats.total;
+  $("s-hot").textContent = stats.by_urgency.urgent + stats.by_urgency.high;
+  $("s-alerted").textContent = stats.alerted;
+  $("s-latency").textContent = stats.total ? stats.avg_latency_ms + " ms" : "–";
+  const n = Object.values(stats.by_urgency).reduce((a, b) => a + b, 0) || 1;
+  $("s-bar").innerHTML = ["urgent", "high", "normal", "low"]
+    .map((u) => `<span title="${u}: ${stats.by_urgency[u]}" style="width:${stats.by_urgency[u] / n * 100}%;background:${COLORS[u]}"></span>`).join("");
+  if (tickets.length) $("list").innerHTML = tickets.map(renderTicket).join("");
+}
+
+async function loadHealth() {
+  const h = await (await fetch("/health")).json();
+  const items = [
+    [h.classifier === "ClaudeClassifier" ? "Claude classifier" : "Offline classifier", h.classifier === "ClaudeClassifier"],
+    ["Zendesk", h.zendesk], ["Slack", h.slack], ["Signature check", h.signature_verification],
+  ];
+  $("integrations").innerHTML = items.map(([n, on]) => `<span class="pill ${on ? "on" : "off"}">${n}</span>`).join("");
+}
+
+$("demo").addEventListener("click", async (e) => {
+  e.target.disabled = true;
+  try {
+    const res = await fetch("/api/demo", { method: "POST" });
+    if (!res.ok) alert((await res.json()).detail);
+    await refresh();
+  } finally { e.target.disabled = false; }
+});
+
+loadHealth(); refresh(); setInterval(refresh, 5000);
+</script>
+</body>
+</html>
